@@ -26,6 +26,14 @@ public interface DataVendor {
     Optional<StockQuote> getStockQuote(String symbol);
 
     /**
+     * 批量获取多个股票的实时价格。
+     *
+     * @param symbols 股票代码列表
+     * @return 股票报价列表
+     */
+    Optional<List<StockQuote>> getStockQuotes(List<String> symbols);
+
+    /**
      * 获取历史OHLCV数据。
      */
     Optional<List<Candle>> getHistorical(String symbol, String period);
@@ -55,7 +63,32 @@ public interface DataVendor {
      */
     Optional<List<NewsArticle>> getNews(String symbol);
 
-    // 数据类
+    /**
+     * 获取热门/趋势股票。
+     *
+     * @param limit 返回数量限制
+     * @return 热门股票列表
+     */
+    Optional<List<TrendingTicker>> getTrendingTickers(int limit);
+
+    /**
+     * 获取市场涨跌幅榜股票。
+     *
+     * @param type 类型: "gainers"(涨幅榜), "losers"(跌幅榜), "active"(成交量榜)
+     * @param limit 返回数量限制
+     * @return 股票列表
+     */
+    Optional<List<StockQuote>> getMarketMovers(String type, int limit);
+
+    /**
+     * 按条件筛选股票。
+     *
+     * @param filter 筛选条件
+     * @return 符合条件股票列表
+     */
+    Optional<List<StockQuote>> screenStocks(StockFilter filter);
+
+    // ==================== 数据类 ====================
 
     record StockQuote(
         String symbol,
@@ -114,5 +147,31 @@ public interface DataVendor {
         String url,
         String source,
         LocalDateTime publishTime
+    ) {}
+
+    /**
+     * 热门/趋势股票数据。
+     */
+    record TrendingTicker(
+        String symbol,
+        String name,
+        double price,
+        double changePercent,
+        long volume,
+        int rank
+    ) {}
+
+    /**
+     * 股票筛选条件。
+     */
+    record StockFilter(
+        Double minPrice,
+        Double maxPrice,
+        Long minVolume,
+        Double minMarketCap,
+        Double minPe,
+        Double maxPe,
+        String sector,
+        String exchange
     ) {}
 }

@@ -27,6 +27,7 @@ public class BacktestEngine {
     private final LocalDate startDate;
     private final LocalDate endDate;
     private final double initialCapital;
+    private final TradingCostConfig costConfig;
 
     private List<TradeRecord> trades;
     private Map<String, Position> positions;
@@ -42,10 +43,25 @@ public class BacktestEngine {
      * @param initialCapital 初始资金
      */
     public BacktestEngine(VendorRouter vendorRouter, LocalDate startDate, LocalDate endDate, double initialCapital) {
+        this(vendorRouter, startDate, endDate, initialCapital, TradingCostConfig.defaults());
+    }
+
+    /**
+     * 创建回测引擎实例（带交易成本配置）
+     *
+     * @param vendorRouter 数据源路由器
+     * @param startDate 回测开始日期
+     * @param endDate 回测结束日期
+     * @param initialCapital 初始资金
+     * @param costConfig 交易成本配置
+     */
+    public BacktestEngine(VendorRouter vendorRouter, LocalDate startDate, LocalDate endDate,
+                         double initialCapital, TradingCostConfig costConfig) {
         this.vendorRouter = vendorRouter;
         this.startDate = startDate;
         this.endDate = endDate;
         this.initialCapital = initialCapital;
+        this.costConfig = costConfig;
         this.trades = new ArrayList<>();
         this.positions = new HashMap<>();
         this.cash = initialCapital;
@@ -192,34 +208,51 @@ public class BacktestEngine {
     }
 
     /**
-     * 执行买入
+     * 执行买入（含交易成本）
      */
     private void executeBuy(String symbol, double price, LocalDate date) {
+        // 应用滑点：买入价格更高
+        double actualBuyPrice = costConfig.getBuyPrice(price);
+
         if (cash <= 0) {
             log.debug("Insufficient cash to buy {} at {}", symbol, price);
             return;
         }
 
-        int quantity = (int) (cash / price);
+        int quantity = (int) (cash / actualBuyPrice);
         if (quantity > 0) {
-            double cost = quantity * price;
-            cash -= cost;
+            double grossCost = quantity * actualBuyPrice;
+            double commission = costConfig.calculateCommission(grossCost);
+            double totalCost = grossCost + commission;
+
+            if (totalCost > cash) {
+                // 调整数量以支付手续费
+                totalCost = cash;
+                grossCost = totalCost / (1 + costConfig.getCommissionRate());
+                quantity = (int) (grossCost / actualBuyPrice);
+                if (quantity <= 0) {
+                    log.debug("Insufficient cash to buy {} after commission at {}", symbol, price);
+                    return;
+                }
+            }
+
+            cash -= totalCost;
 
             Position position = positions.get(symbol);
             if (position == null) {
-                position = new Position(symbol, quantity, price);
+                position = new Position(symbol, quantity, actualBuyPrice);
                 positions.put(symbol, position);
             } else {
-                position.addQuantity(quantity, price);
+                position.addQuantity(quantity, actualBuyPrice);
             }
 
-            trades.add(new TradeRecord(symbol, "BUY", quantity, price, date));
-            log.debug("Bought {} shares of {} at {} on {}", quantity, symbol, price, date);
+            trades.add(new TradeRecord(symbol, "BUY", quantity, actualBuyPrice, date, commission));
+            log.debug("Bought {} shares of {} at {} (commission: {}) on {}", quantity, symbol, actualBuyPrice, commission, date);
         }
     }
 
     /**
-     * 执行卖出
+     * 执行卖出（含交易成本）
      */
     private void executeSell(String symbol, double price, LocalDate date) {
         Position position = positions.get(symbol);
@@ -228,13 +261,18 @@ public class BacktestEngine {
             return;
         }
 
-        int quantity = position.getQuantity();
-        double revenue = quantity * price;
-        cash += revenue;
+        // 应用滑点：卖出价格更低
+        double actualSellPrice = costConfig.getSellPrice(price);
 
+        int quantity = position.getQuantity();
+        double grossRevenue = quantity * actualSellPrice;
+        double commission = costConfig.calculateCommission(grossRevenue);
+        double netRevenue = grossRevenue - commission;
+
+        cash += netRevenue;
         position.reduceQuantity(quantity);
-        trades.add(new TradeRecord(symbol, "SELL", quantity, price, date));
-        log.debug("Sold {} shares of {} at {} on {}", quantity, symbol, price, date);
+        trades.add(new TradeRecord(symbol, "SELL", quantity, actualSellPrice, date, commission));
+        log.debug("Sold {} shares of {} at {} (commission: {}) on {}", quantity, symbol, actualSellPrice, commission, date);
     }
 
     /**
@@ -345,15 +383,28 @@ public class BacktestEngine {
         public final String symbol;
         public final String action; // BUY or SELL
         public final int quantity;
-        public final double price;
+        public final double price;    // 执行价格（含滑点）
         public final LocalDate date;
+        public final double commission; // 手续费
 
         public TradeRecord(String symbol, String action, int quantity, double price, LocalDate date) {
+            this(symbol, action, quantity, price, date, 0.0);
+        }
+
+        public TradeRecord(String symbol, String action, int quantity, double price, LocalDate date, double commission) {
             this.symbol = symbol;
             this.action = action;
             this.quantity = quantity;
             this.price = price;
             this.date = date;
+            this.commission = commission;
+        }
+
+        /**
+         * 获取总交易金额（含手续费）
+         */
+        public double getTotalValue() {
+            return quantity * price + commission;
         }
     }
 

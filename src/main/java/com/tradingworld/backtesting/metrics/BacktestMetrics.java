@@ -1,4 +1,4 @@
-/package com.tradingworld.backtesting.metrics;
+package com.tradingworld.backtesting.metrics;
 
 import com.tradingworld.backtesting.BacktestEngine;
 import com.tradingworld.backtesting.BacktestEngine.HistoricalData;
@@ -8,7 +8,7 @@ import java.util.List;
 
 /**
  * 回测性能指标计算器。
- * 计算并返回策略表现的各项指标，包括收益率、夏普比率、最大回撤等。
+ * 计算并返回策略表现的各项指标，包括收益率、夏普比率、最大回撤、索提诺比率、VaR等。
  */
 public class BacktestMetrics {
 
@@ -16,14 +16,21 @@ public class BacktestMetrics {
     private final double initialCapital;
     private final double finalValue;
     private final List<HistoricalData> historicalData;
+    private final List<Double> benchmarkReturns;  // 基准收益率（可选，用于计算 Beta/Alpha）
 
     private static final double RISK_FREE_RATE = 0.0; // 假设无风险利率为0
 
     public BacktestMetrics(List<TradeRecord> trades, double initialCapital, double finalValue, List<HistoricalData> historicalData) {
+        this(trades, initialCapital, finalValue, historicalData, null);
+    }
+
+    public BacktestMetrics(List<TradeRecord> trades, double initialCapital, double finalValue,
+                          List<HistoricalData> historicalData, List<Double> benchmarkReturns) {
         this.trades = trades;
         this.initialCapital = initialCapital;
         this.finalValue = finalValue;
         this.historicalData = historicalData;
+        this.benchmarkReturns = benchmarkReturns;
     }
 
     /**
@@ -43,12 +50,11 @@ public class BacktestMetrics {
      *
      * @return 年化收益率百分比
      */
-    public double calculateAnnualizedReturn() {
+    public double calculateAnnualReturn() {
         if (historicalData == null || historicalData.isEmpty()) {
             return 0;
         }
 
-        // 计算回测周期（天数）
         HistoricalData firstData = historicalData.get(0);
         HistoricalData lastData = historicalData.get(historicalData.size() - 1);
         long days = java.time.temporal.ChronoUnit.DAYS.between(firstData.date, lastData.date);
@@ -57,12 +63,29 @@ public class BacktestMetrics {
             return 0;
         }
 
-        // 计算年化收益率
         double totalReturn = finalValue / initialCapital;
         double years = days / 365.0;
-        double annualizedReturn = (Math.pow(totalReturn, 1.0 / years) - 1) * 100;
+        return (Math.pow(totalReturn, 1.0 / years) - 1) * 100;
+    }
 
-        return annualizedReturn;
+    /**
+     * 计算年化波动率
+     *
+     * @return 年化波动率百分比
+     */
+    public double calculateAnnualVolatility() {
+        List<Double> dailyReturns = calculateDailyReturns();
+        if (dailyReturns.isEmpty()) {
+            return 0;
+        }
+
+        double variance = dailyReturns.stream()
+            .mapToDouble(d -> Math.pow(d - dailyReturns.stream().mapToDouble(x -> x).average().orElse(0), 2))
+            .average()
+            .orElse(0);
+
+        double dailyVolatility = Math.sqrt(variance);
+        return dailyVolatility * Math.sqrt(252) * 100;
     }
 
     /**
@@ -71,34 +94,59 @@ public class BacktestMetrics {
      * @return 夏普比率
      */
     public double calculateSharpeRatio() {
-        if (historicalData == null || historicalData.size() < 2) {
-            return 0;
-        }
-
-        // 计算每日收益率
         List<Double> dailyReturns = calculateDailyReturns();
         if (dailyReturns.isEmpty()) {
             return 0;
         }
 
-        // 计算平均收益率
         double avgReturn = dailyReturns.stream().mapToDouble(d -> d).average().orElse(0);
+        double stdDev = calculateStandardDeviation(dailyReturns, avgReturn);
 
-        // 计算收益率标准差
-        double variance = dailyReturns.stream()
-            .mapToDouble(d -> Math.pow(d - avgReturn, 2))
-            .average()
-            .orElse(0);
-        double stdDev = Math.sqrt(variance);
-
-        // 夏普比率 = (平均收益率 - 无风险利率) / 标准差
         if (stdDev == 0) {
             return 0;
         }
 
         double dailySharpe = (avgReturn - RISK_FREE_RATE / 365) / stdDev;
-        // 年化夏普比率
         return dailySharpe * Math.sqrt(252);
+    }
+
+    /**
+     * 计算索提诺比率
+     * 只考虑下行波动率，更准确反映下行风险
+     *
+     * @return 索提诺比率
+     */
+    public double calculateSortinoRatio() {
+        List<Double> dailyReturns = calculateDailyReturns();
+        if (dailyReturns.isEmpty()) {
+            return 0;
+        }
+
+        double avgReturn = dailyReturns.stream().mapToDouble(d -> d).average().orElse(0);
+        double downsideDeviation = calculateDownsideDeviation(dailyReturns);
+
+        if (downsideDeviation == 0) {
+            return 0;
+        }
+
+        double dailySortino = (avgReturn - RISK_FREE_RATE / 365) / downsideDeviation;
+        return dailySortino * Math.sqrt(252);
+    }
+
+    /**
+     * 计算卡玛比率
+     * 年化收益 / 最大回撤
+     *
+     * @return 卡玛比率
+     */
+    public double calculateCalmarRatio() {
+        double maxDrawdown = calculateMaxDrawdown();
+        if (maxDrawdown == 0) {
+            return 0;
+        }
+
+        double annualReturn = calculateAnnualReturn();
+        return annualReturn / maxDrawdown;
     }
 
     /**
@@ -136,6 +184,108 @@ public class BacktestMetrics {
     }
 
     /**
+     * 计算 Value at Risk (VaR)
+     * 在给定置信水平下，最大潜在损失
+     *
+     * @param confidenceLevel 置信水平（默认0.95）
+     * @return VaR 百分比
+     */
+    public double calculateVaR(double confidenceLevel) {
+        return calculateVaR(confidenceLevel, calculateDailyReturns());
+    }
+
+    public double calculateVaR() {
+        return calculateVaR(0.95);
+    }
+
+    /**
+     * 计算 Conditional VaR (CVaR) / Expected Shortfall
+     * VaR 假设外的平均损失
+     *
+     * @param confidenceLevel 置信水平（默认0.95）
+     * @return CVaR 百分比
+     */
+    public double calculateCVaR(double confidenceLevel) {
+        List<Double> dailyReturns = calculateDailyReturns();
+        if (dailyReturns.isEmpty()) {
+            return 0;
+        }
+
+        double varPercentile = (1 - confidenceLevel) * 100;
+        double var = percentile(dailyReturns, varPercentile);
+
+        // 计算 VaR 假设外的平均损失
+        return dailyReturns.stream()
+            .filter(r -> r <= var)
+            .mapToDouble(r -> Math.abs(r))
+            .average()
+            .orElse(0) * 100;
+    }
+
+    public double calculateCVaR() {
+        return calculateCVaR(0.95);
+    }
+
+    /**
+     * 计算 Beta 系数
+     * 策略相对于基准的系统性风险
+     * 需要提供基准收益率数据
+     *
+     * @return Beta 系数
+     */
+    public double calculateBeta() {
+        if (benchmarkReturns == null || benchmarkReturns.isEmpty()) {
+            return 1.0;  // 默认 Beta = 1（与市场同风险）
+        }
+
+        List<Double> strategyReturns = calculateDailyReturns();
+        if (strategyReturns.isEmpty() || strategyReturns.size() != benchmarkReturns.size()) {
+            return 1.0;
+        }
+
+        double strategyAvg = strategyReturns.stream().mapToDouble(x -> x).average().orElse(0);
+        double benchmarkAvg = benchmarkReturns.stream().mapToDouble(x -> x).average().orElse(0);
+
+        double covariance = 0;
+        double benchmarkVariance = 0;
+
+        for (int i = 0; i < strategyReturns.size(); i++) {
+            double strategyDiff = strategyReturns.get(i) - strategyAvg;
+            double benchmarkDiff = benchmarkReturns.get(i) - benchmarkAvg;
+            covariance += strategyDiff * benchmarkDiff;
+            benchmarkVariance += benchmarkDiff * benchmarkDiff;
+        }
+
+        if (benchmarkVariance == 0) {
+            return 1.0;
+        }
+
+        return covariance / benchmarkVariance;
+    }
+
+    /**
+     * 计算 Alpha
+     * 策略相对于 CAPM 预期的超额收益
+     * Alpha = 策略收益率 - (无风险利率 + Beta * (基准收益率 - 无风险利率))
+     *
+     * @return Alpha 百分比
+     */
+    public double calculateAlpha() {
+        if (benchmarkReturns == null || benchmarkReturns.isEmpty()) {
+            // 无法计算 Alpha，返回 0
+            return 0;
+        }
+
+        double annualReturn = calculateAnnualReturn() / 100;  // 转为小数
+        double annualBenchmarkReturn = benchmarkReturns.stream().mapToDouble(x -> x).average().orElse(0) * 252;
+        double beta = calculateBeta();
+
+        // Alpha 年化
+        double alpha = annualReturn - (RISK_FREE_RATE + beta * (annualBenchmarkReturn - RISK_FREE_RATE));
+        return alpha * 100;
+    }
+
+    /**
      * 计算胜率
      *
      * @return 盈利交易占总交易数的比例（百分比）
@@ -145,7 +295,6 @@ public class BacktestMetrics {
             return 0;
         }
 
-        // 按股票分组计算盈亏
         java.util.Map<String, java.util.List<TradeRecord>> tradesBySymbol = new java.util.HashMap<>();
         for (TradeRecord trade : trades) {
             tradesBySymbol.computeIfAbsent(trade.symbol, k -> new java.util.ArrayList<>()).add(trade);
@@ -171,7 +320,6 @@ public class BacktestMetrics {
                 }
             }
 
-            // 只有完成一轮买卖才算完整交易
             if (buyQty > 0 && sellQty > 0) {
                 totalCompletedTrades++;
                 double profit = sellRevenue - (buyCost * sellQty / buyQty);
@@ -198,7 +346,6 @@ public class BacktestMetrics {
             return 0;
         }
 
-        // 按股票分组计算盈亏
         java.util.Map<String, java.util.List<TradeRecord>> tradesBySymbol = new java.util.HashMap<>();
         for (TradeRecord trade : trades) {
             tradesBySymbol.computeIfAbsent(trade.symbol, k -> new java.util.ArrayList<>()).add(trade);
@@ -253,7 +400,7 @@ public class BacktestMetrics {
     }
 
     /**
-     * 计算每日收益率
+     * 计算日收益率
      */
     private List<Double> calculateDailyReturns() {
         java.util.List<Double> returns = new java.util.ArrayList<>();
@@ -273,6 +420,59 @@ public class BacktestMetrics {
         }
 
         return returns;
+    }
+
+    /**
+     * 计算标准差
+     */
+    private double calculateStandardDeviation(List<Double> values, double mean) {
+        if (values.isEmpty()) {
+            return 0;
+        }
+
+        double variance = values.stream()
+            .mapToDouble(d -> Math.pow(d - mean, 2))
+            .average()
+            .orElse(0);
+
+        return Math.sqrt(variance);
+    }
+
+    /**
+     * 计算下行偏差（只考虑负收益）
+     */
+    private double calculateDownsideDeviation(List<Double> returns) {
+        if (returns.isEmpty()) {
+            return 0;
+        }
+
+        double avgReturn = returns.stream().mapToDouble(x -> x).average().orElse(0);
+        double targetReturn = 0;  // 假设目标收益为 0
+
+        double squaredDownside = returns.stream()
+            .filter(r -> r < targetReturn)
+            .mapToDouble(r -> Math.pow(r - targetReturn, 2))
+            .average()
+            .orElse(0);
+
+        return Math.sqrt(squaredDownside);
+    }
+
+    /**
+     * 计算百分位数
+     */
+    private double percentile(List<Double> values, double percentile) {
+        if (values.isEmpty()) {
+            return 0;
+        }
+
+        java.util.List<Double> sorted = new java.util.ArrayList<>(values);
+        sorted.sort(Double::compareTo);
+
+        int index = (int) Math.ceil(percentile / 100.0 * sorted.size()) - 1;
+        index = Math.max(0, Math.min(index, sorted.size() - 1));
+
+        return sorted.get(index);
     }
 
     /**
@@ -332,16 +532,30 @@ public class BacktestMetrics {
             "=== 回测性能摘要 ===\n" +
             "总收益率: %.2f%%\n" +
             "年化收益率: %.2f%%\n" +
+            "年化波动率: %.2f%%\n" +
             "夏普比率: %.2f\n" +
+            "索提诺比率: %.2f\n" +
+            "卡玛比率: %.2f\n" +
             "最大回撤: %.2f%%\n" +
+            "VaR (95%%): %.2f%%\n" +
+            "CVaR (95%%): %.2f%%\n" +
+            "Beta: %.2f\n" +
+            "Alpha: %.2f%%\n" +
             "胜率: %.2f%%\n" +
             "盈亏比: %.2f\n" +
             "总交易次数: %d\n" +
             "盈利交易次数: %d",
             calculateTotalReturn(),
-            calculateAnnualizedReturn(),
+            calculateAnnualReturn(),
+            calculateAnnualVolatility(),
             calculateSharpeRatio(),
+            calculateSortinoRatio(),
+            calculateCalmarRatio(),
             calculateMaxDrawdown(),
+            calculateVaR(),
+            calculateCVaR(),
+            calculateBeta(),
+            calculateAlpha(),
             calculateWinRate(),
             calculateProfitLossRatio(),
             getTotalTrades(),

@@ -1,8 +1,6 @@
 package com.tradingworld.tools;
 
 import com.tradingworld.dataflows.VendorRouter;
-import com.tradingworld.dataflows.AlphaVantageVendor;
-import com.tradingworld.dataflows.YFinanceVendor;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.P;
 import org.slf4j.Logger;
@@ -13,7 +11,7 @@ import java.util.List;
 
 /**
  * 用于获取新闻数据的工具。
- * 通过VendorRouter使用Yahoo Finance和Alpha Vantage。
+ * 通过注入的 VendorRouter 获取新闻数据。
  */
 @Component
 public class NewsTools {
@@ -22,10 +20,8 @@ public class NewsTools {
 
     private final VendorRouter vendorRouter;
 
-    public NewsTools() {
-        YFinanceVendor yFinanceVendor = new YFinanceVendor();
-        AlphaVantageVendor alphaVantageVendor = new AlphaVantageVendor();
-        this.vendorRouter = new VendorRouter(List.of(yFinanceVendor, alphaVantageVendor));
+    public NewsTools(VendorRouter vendorRouter) {
+        this.vendorRouter = vendorRouter;
     }
 
     /**
@@ -114,7 +110,7 @@ public class NewsTools {
                         List<String> positiveWords = List.of("surge", "gain", "rise", "grow", "profit", "beat", "upgrade", "bullish", "optimistic", "soar", "jump", "rally");
                         List<String> negativeWords = List.of("fall", "drop", "loss", "miss", "downgrade", "bearish", "pessimistic", "plunge", "decline", "cut", "warn", "fear");
 
-                        for (var article : articles) {
+                        for ( var article : articles) {
                             String text = (article.title() + " " + article.content()).toLowerCase();
                             boolean hasPositive = positiveWords.stream().anyMatch(text::contains);
                             boolean hasNegative = negativeWords.stream().anyMatch(text::contains);
@@ -150,10 +146,33 @@ public class NewsTools {
      */
     @Tool("Get top trending tickers in the market")
     public String getTrendingTickers(@P("Maximum number of tickers to return (default 10)") Integer limit) {
-        int l = (limit != null) ? limit : 10;
+        int l = (limit != null && limit > 0) ? limit : 10;
         log.debug("Fetching {} trending tickers", l);
-        // 热门股票代码需要单独的API或对成交量/波动的分析
-        return "{\"error\": \"Trending tickers not yet implemented. This requires a market scanner API.\"}";
+        try {
+            return vendorRouter.getTrendingTickers(l)
+                    .map(tickers -> {
+                        StringBuilder sb = new StringBuilder();
+                        sb.append("{\"trending\": [");
+                        for (int i = 0; i < tickers.size(); i++) {
+                            var ticker = tickers.get(i);
+                            if (i > 0) sb.append(", ");
+                            sb.append("{");
+                            sb.append("\"symbol\": \"").append(ticker.symbol()).append("\", ");
+                            sb.append("\"name\": \"").append(escapeJson(ticker.name())).append("\", ");
+                            sb.append("\"price\": ").append(ticker.price()).append(", ");
+                            sb.append("\"changePercent\": ").append(ticker.changePercent()).append(", ");
+                            sb.append("\"volume\": ").append(ticker.volume()).append(", ");
+                            sb.append("\"rank\": ").append(ticker.rank());
+                            sb.append("}");
+                        }
+                        sb.append("], \"count\": ").append(tickers.size()).append("}");
+                        return sb.toString();
+                    })
+                    .orElse("{\"error\": \"No trending tickers available\"}");
+        } catch (Exception e) {
+            log.error("Error fetching trending tickers: {}", e.getMessage());
+            return "{\"error\": \"Failed to fetch trending tickers: " + e.getMessage() + "\"}";
+        }
     }
 
     private String escapeJson(String text) {

@@ -311,4 +311,239 @@ public class YFinanceVendor implements DataVendor {
             default -> "1mo";
         };
     }
+
+    @Override
+    public Optional<List<StockQuote>> getStockQuotes(List<String> symbols) {
+        if (symbols == null || symbols.isEmpty()) {
+            return Optional.empty();
+        }
+        try {
+            String symbolsParam = String.join(",", symbols.stream()
+                .map(String::toUpperCase)
+                .toList());
+            String url = String.format(
+                "https://query1.finance.yahoo.com/v7/finance/quote?symbols=%s",
+                symbolsParam
+            );
+
+            String response = fetchUrl(url);
+            if (response == null) return Optional.empty();
+
+            JsonNode root = objectMapper.readTree(response);
+            JsonNode result = root.path("quoteResponse").path("result");
+
+            if (result.isEmpty()) return Optional.empty();
+
+            List<StockQuote> quotes = new ArrayList<>();
+            for (JsonNode item : result) {
+                String symbol = item.path("symbol").asText();
+                double price = item.path("regularMarketPrice").asDouble(0);
+                double previousClose = item.path("regularMarketPreviousClose").asDouble(0);
+                double change = price - previousClose;
+                double changePercent = previousClose > 0 ? (change / previousClose) * 100 : 0;
+                long volume = item.path("regularMarketVolume").asLong(0);
+
+                quotes.add(new StockQuote(
+                    symbol,
+                    price,
+                    change,
+                    changePercent,
+                    volume,
+                    LocalDateTime.now(ZoneOffset.UTC)
+                ));
+            }
+            return Optional.of(quotes);
+        } catch (Exception e) {
+            log.warn("Failed to get batch stock quotes: {}", e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    @Override
+    public Optional<List<TrendingTicker>> getTrendingTickers(int limit) {
+        try {
+            // 使用 Yahoo Finance 的热门榜 API
+            String url = "https://query1.finance.yahoo.com/v6/finance/recommendationsbyasset?symbol=^GSPC";
+
+            String response = fetchUrl(url);
+            if (response == null) return Optional.empty();
+
+            JsonNode root = objectMapper.readTree(response);
+            JsonNode quotes = root.path("finance").path("result");
+
+            if (quotes.isEmpty()) return Optional.empty();
+
+            // 从大盘指数成分股中获取热门股票
+            List<TrendingTicker> trending = new ArrayList<>();
+            JsonNode instrumentInfo = quotes.get(0).path("instrumentInfo");
+            JsonNode relatedEquities = instrumentInfo.path("relatedEquities");
+
+            int rank = 0;
+            for (JsonNode item : relatedEquities) {
+                if (rank >= limit) break;
+                String symbol = item.path("symbol").asText();
+                double price = item.path("regularMarketPrice").asDouble(0);
+                double changePercent = item.path("regularMarketChangePercent").asDouble(0);
+                long volume = item.path("regularMarketVolume").asLong(0);
+                String name = item.path("shortName").asText(symbol);
+
+                trending.add(new TrendingTicker(
+                    symbol,
+                    name,
+                    price,
+                    changePercent,
+                    volume,
+                    ++rank
+                ));
+            }
+
+            return trending.isEmpty() ? Optional.empty() : Optional.of(trending);
+        } catch (Exception e) {
+            log.warn("Failed to get trending tickers: {}", e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    @Override
+    public Optional<List<StockQuote>> getMarketMovers(String type, int limit) {
+        try {
+            // Yahoo Finance 市场涨跌幅榜
+            // ^GSPC = S&P 500, ^DJI = Dow Jones, ^IXIC = Nasdaq
+            String url = String.format(
+                "https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=1d&range=5d",
+                "^GSPC"
+            );
+
+            String response = fetchUrl(url);
+            if (response == null) return Optional.empty();
+
+            // 获取市场概览页面的涨跌幅榜数据
+            String moversUrl = "https://query1.finance.yahoo.com/v6/finance/quote/marketMovers";
+
+            // 实际上 Yahoo Finance 没有直接的 API 获取涨跌幅榜
+            // 我们使用 v7/finance/market/overview 风格的 API
+            String overviewUrl = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?formatted=true&lang=en-US&region=US&scrIds=day_gainers&start=0&count=" + limit;
+
+            String overviewResponse = fetchUrl(overviewUrl);
+            if (overviewResponse == null) return Optional.empty();
+
+            JsonNode root = objectMapper.readTree(overviewResponse);
+            JsonNode quotes = root.path("finance").path("result").path("quotes");
+
+            if (quotes.isEmpty()) return Optional.empty();
+
+            List<StockQuote> movers = new ArrayList<>();
+            for (JsonNode item : quotes) {
+                String symbol = item.path("symbol").asText();
+                double price = item.path("regularMarketPrice").asDouble(0);
+                double change = item.path("regularMarketChange").asDouble(0);
+                double changePercent = item.path("regularMarketChangePercent").asDouble(0);
+                long volume = item.path("regularMarketVolume").asLong(0);
+
+                movers.add(new StockQuote(
+                    symbol,
+                    price,
+                    change,
+                    changePercent,
+                    volume,
+                    LocalDateTime.now(ZoneOffset.UTC)
+                ));
+            }
+
+            // 根据类型排序
+            if ("gainers".equalsIgnoreCase(type)) {
+                movers.sort((a, b) -> Double.compare(b.changePercent(), a.changePercent()));
+            } else if ("losers".equalsIgnoreCase(type)) {
+                movers.sort((a, b) -> Double.compare(a.changePercent(), b.changePercent()));
+            } else { // active
+                movers.sort((a, b) -> Long.compare(b.volume(), a.volume()));
+            }
+
+            // 限制返回数量
+            if (movers.size() > limit) {
+                movers = movers.subList(0, limit);
+            }
+
+            return movers.isEmpty() ? Optional.empty() : Optional.of(movers);
+        } catch (Exception e) {
+            log.warn("Failed to get market movers: {}", e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    @Override
+    public Optional<List<StockQuote>> screenStocks(StockFilter filter) {
+        try {
+            // Yahoo Finance 没有直接的筛选 API
+            // 使用批量报价获取数据后本地筛选
+            // 为了实现筛选功能，我们需要获取更大的股票池
+            String screenerUrl = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?formatted=true&lang=en-US&region=US&scrIds=custom&start=0&count=100";
+
+            String response = fetchUrl(screenerUrl);
+            if (response == null) return Optional.empty();
+
+            JsonNode root = objectMapper.readTree(response);
+            JsonNode quotes = root.path("finance").path("result").path("quotes");
+
+            if (quotes.isEmpty()) return Optional.empty();
+
+            List<StockQuote> screened = new ArrayList<>();
+            for (JsonNode item : quotes) {
+                double price = item.path("regularMarketPrice").asDouble(0);
+                long volume = item.path("regularMarketVolume").asLong(0);
+                double marketCap = item.path("marketCap").asDouble(0);
+                double pe = item.path("trailingPE").asDouble(0);
+                String sector = item.path("sector").asText("");
+                String exchange = item.path("exchange").asText("");
+
+                // 应用筛选条件
+                boolean matches = true;
+
+                if (filter.minPrice() != null && price < filter.minPrice()) {
+                    matches = false;
+                }
+                if (filter.maxPrice() != null && price > filter.maxPrice()) {
+                    matches = false;
+                }
+                if (filter.minVolume() != null && volume < filter.minVolume()) {
+                    matches = false;
+                }
+                if (filter.minMarketCap() != null && marketCap < filter.minMarketCap()) {
+                    matches = false;
+                }
+                if (filter.minPe() != null && pe > 0 && pe < filter.minPe()) {
+                    matches = false;
+                }
+                if (filter.maxPe() != null && pe > filter.maxPe()) {
+                    matches = false;
+                }
+                if (filter.sector() != null && !filter.sector().isEmpty() && !sector.equalsIgnoreCase(filter.sector())) {
+                    matches = false;
+                }
+                if (filter.exchange() != null && !filter.exchange().isEmpty() && !exchange.equalsIgnoreCase(filter.exchange())) {
+                    matches = false;
+                }
+
+                if (matches) {
+                    double previousClose = item.path("regularMarketPreviousClose").asDouble(0);
+                    double change = price - previousClose;
+                    double changePercent = previousClose > 0 ? (change / previousClose) * 100 : 0;
+
+                    screened.add(new StockQuote(
+                        item.path("symbol").asText(),
+                        price,
+                        change,
+                        changePercent,
+                        volume,
+                        LocalDateTime.now(ZoneOffset.UTC)
+                    ));
+                }
+            }
+
+            return screened.isEmpty() ? Optional.empty() : Optional.of(screened);
+        } catch (Exception e) {
+            log.warn("Failed to screen stocks: {}", e.getMessage());
+            return Optional.empty();
+        }
+    }
 }
