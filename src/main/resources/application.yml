@@ -1,0 +1,134 @@
+spring:
+  application:
+    name: tradingworld
+  datasource:
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:tradingworld}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 30000
+
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  type-aliases-package: com.tradingworld.persistence.entity
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+trading:
+  agents:
+    selected-analysts: market,sentiment,news,fundamentals
+    max-debate-rounds: 1
+    max-risk-discuss-rounds: 1
+    max-recur-limit: 100
+  llm:
+    provider: openai
+    deep-think-model: gpt-4.5
+    quick-think-model: gpt-4.5-mini
+    output-language: English
+  memory:
+    bm25-k1: 1.5
+    bm25-b: 0.75
+    max-similarities: 3
+  paths:
+    results-dir: ${TRADINGWORLD_RESULTS_DIR:~/.tradingworld/logs}
+    data-cache-dir: ${TRADINGWORLD_CACHE_DIR:~/.tradingworld/cache}
+  data:
+    yfinance:
+      enabled: true
+    alpha-vantage:
+      enabled: true
+      api-key: ${ALPHA_VANTAGE_API_KEY:}
+      base-url: https://www.alphavantage.co
+    ashare:
+      enabled: true
+      base-url: https://push2.eastmoney.com
+      timeout: 30
+
+langchain4j:
+  open-ai:
+    base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+    api-key: ${OPENAI_API_KEY:}
+    model-name: ${DEEP_THINK_MODEL:gpt-4.5}
+  anthropic:
+    api-key: ${ANTHROPIC_API_KEY:}
+    model-name: claude-3-5-sonnet-20241022
+  google-ai:
+    api-key: ${GOOGLE_API_KEY:}
+    model-name: gemini-pro
+  ollama:
+    base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+    model-name: llama3.2
+  # MiniMax - https://platform.minimaxi.com
+  minimax:
+    api-key: ${MINIMAX_API_KEY:}
+    base-url: ${MINIMAX_BASE_URL:https://api.minimaxi.chat/v1}
+    model-name: ${MINIMAX_MODEL_NAME:minimax-01}
+  # DeepSeek - https://platform.deepseek.com
+  deepseek:
+    api-key: ${DEEPSEEK_API_KEY:}
+    base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com/v1}
+    model-name: ${DEEPSEEK_MODEL_NAME:deepseek-chat}
+  # Alibaba Qwen - https://dashscope.console.aliyun.com
+  qwen:
+    api-key: ${QWN_API_KEY:}
+    base-url: ${QWN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+    model-name: ${QWN_MODEL_NAME:qwen-max}
+  # Baidu ERNIE - https://wenxin.baidu.com
+  ernie:
+    api-key: ${ERNIE_API_KEY:}
+    base-url: ${ERNIE_BASE_URL:https://qianfan.baidubce.com/v2}
+    model-name: ${ERNIE_MODEL_NAME:ernie-4.0-8k-latest}
+  # Zhipu GLM - https://open.bigmodel.cn
+  glm:
+    api-key: ${GLM_API_KEY:}
+    base-url: ${GLM_BASE_URL:https://open.bigmodel.cn/api/paas/v4}
+    model-name: ${GLM_MODEL_NAME:glm-4}
+  # ByteDance Doubao - https://console.volcengine.com
+  doubao:
+    api-key: ${DOUBAO_API_KEY:}
+    base-url: ${DOUBAO_BASE_URL:https://ark.cn-beijing.volces.com/api/v3}
+    model-name: ${DOUBAO_MODEL_NAME:doubao-pro-32k}
+  # xAI (Grok) - https://api.x.ai
+  xai:
+    api-key: ${XAI_API_KEY:}
+    base-url: ${XAI_BASE_URL:https://api.x.ai/v1}
+    model-name: ${XAI_MODEL_NAME:grok-4}
+  # OpenRouter - https://openrouter.ai
+  openrouter:
+    api-key: ${OPENROUTER_API_KEY:}
+    base-url: ${OPENROUTER_BASE_URL:https://openrouter.ai/api/v1}
+    model-name: ${OPENROUTER_MODEL_NAME:openai/gpt-4o}
+  # Azure OpenAI - https://azure.microsoft.com
+  azure:
+    api-key: ${AZURE_OPENAI_KEY:}
+    base-url: ${AZURE_OPENAI_ENDPOINT:https://{resource}.openai.azure.com/v1}
+    model-name: ${AZURE_OPENAI_DEPLOYMENT:gpt-4o}
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.tradingworld: DEBUG
+    dev.langchain4j: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

@@ -1,0 +1,167 @@
+package com.tradingworld.tools;
+
+import com.tradingworld.dataflows.VendorRouter;
+import com.tradingworld.dataflows.AlphaVantageVendor;
+import com.tradingworld.dataflows.YFinanceVendor;
+import dev.langchain4j.agent.tool.Tool;
+import dev.langchain4j.agent.tool.P;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+
+import java.util.List;
+
+/**
+ * 用于获取新闻数据的工具。
+ * 通过VendorRouter使用Yahoo Finance和Alpha Vantage。
+ */
+@Component
+public class NewsTools {
+
+    private static final Logger log = LoggerFactory.getLogger(NewsTools.class);
+
+    private final VendorRouter vendorRouter;
+
+    public NewsTools() {
+        YFinanceVendor yFinanceVendor = new YFinanceVendor();
+        AlphaVantageVendor alphaVantageVendor = new AlphaVantageVendor();
+        this.vendorRouter = new VendorRouter(List.of(yFinanceVendor, alphaVantageVendor));
+    }
+
+    /**
+     * 获取公司的近期新闻。
+     */
+    @Tool("Get recent news articles for a company")
+    public String getNews(@P("Stock ticker symbol (e.g., NVDA)") String ticker) {
+        log.debug("Fetching news for ticker: {}", ticker);
+        try {
+            return vendorRouter.getNews(ticker.toUpperCase())
+                    .map(articles -> {
+                        StringBuilder sb = new StringBuilder();
+                        sb.append("{\"ticker\": \"").append(ticker.toUpperCase()).append("\", \"news\": [");
+                        for (int i = 0; i < articles.size(); i++) {
+                            var article = articles.get(i);
+                            if (i > 0) sb.append(", ");
+                            sb.append("{");
+                            sb.append("\"title\": \"").append(escapeJson(article.title())).append("\", ");
+                            sb.append("\"content\": \"").append(escapeJson(article.content())).append("\", ");
+                            sb.append("\"source\": \"").append(escapeJson(article.source())).append("\", ");
+                            sb.append("\"url\": \"").append(escapeJson(article.url())).append("\", ");
+                            sb.append("\"publishTime\": \"").append(article.publishTime().toString()).append("\"");
+                            sb.append("}");
+                        }
+                        sb.append("], \"count\": ").append(articles.size()).append("}");
+                        return sb.toString();
+                    })
+                    .orElse("{\"error\": \"No news available for ticker: " + ticker + "\"}");
+        } catch (Exception e) {
+            log.error("Error fetching news for {}: {}", ticker, e.getMessage());
+            return "{\"error\": \"Failed to fetch news: " + e.getMessage() + "\"}";
+        }
+    }
+
+    /**
+     * 获取公司在指定日期范围内的近期新闻。
+     */
+    @Tool("Get recent news articles for a company within specified days")
+    public String getNewsWithDateRange(
+            @P("Stock ticker symbol") String ticker,
+            @P("Number of days to look back (default 7)") Integer days) {
+        int d = (days != null) ? days : 7;
+        log.debug("Fetching news for {} within {} days", ticker, d);
+        // 与getNews相同的实现 - 日期过滤需要额外的逻辑
+        return getNews(ticker);
+    }
+
+    /**
+     * 获取全球宏观经济新闻。
+     */
+    @Tool("Get global macroeconomic news for a topic")
+    public String getGlobalNews(@P("Topic to search (e.g., FED, inflation, GDP)") String topic) {
+        log.debug("Fetching global news for topic: {}", topic);
+        // Alpha Vantage提供新闻情绪，可以覆盖市场主题
+        // 目前返回一条消息，表明此功能需要特定实现
+        return "{\"error\": \"Global news by topic not yet implemented. Use getNews() for stock-specific news.\"}";
+    }
+
+    /**
+     * 获取新闻文章的情绪分析。
+     */
+    @Tool("Get sentiment analysis of recent news for a company")
+    public String getSentiment(@P("Stock ticker symbol") String ticker) {
+        log.debug("Fetching sentiment for ticker: {}", ticker);
+        try {
+            return vendorRouter.getNews(ticker.toUpperCase())
+                    .map(articles -> {
+                        if (articles.isEmpty()) {
+                            return String.format("""
+                                {
+                                    "ticker": "%s",
+                                    "overallSentiment": "neutral",
+                                    "positiveCount": 0,
+                                    "negativeCount": 0,
+                                    "neutralCount": 0,
+                                    "articleCount": 0
+                                }
+                                """, ticker.toUpperCase());
+                        }
+
+                        // 基于标题关键词的简单情绪估计
+                        int positive = 0;
+                        int negative = 0;
+                        int neutral = 0;
+
+                        List<String> positiveWords = List.of("surge", "gain", "rise", "grow", "profit", "beat", "upgrade", "bullish", "optimistic", "soar", "jump", "rally");
+                        List<String> negativeWords = List.of("fall", "drop", "loss", "miss", "downgrade", "bearish", "pessimistic", "plunge", "decline", "cut", "warn", "fear");
+
+                        for (var article : articles) {
+                            String text = (article.title() + " " + article.content()).toLowerCase();
+                            boolean hasPositive = positiveWords.stream().anyMatch(text::contains);
+                            boolean hasNegative = negativeWords.stream().anyMatch(text::contains);
+
+                            if (hasPositive && !hasNegative) positive++;
+                            else if (hasNegative && !hasPositive) negative++;
+                            else neutral++;
+                        }
+
+                        String overallSentiment = positive > negative ? "positive" :
+                                negative > positive ? "negative" : "neutral";
+
+                        return String.format("""
+                            {
+                                "ticker": "%s",
+                                "overallSentiment": "%s",
+                                "positiveCount": %d,
+                                "negativeCount": %d,
+                                "neutralCount": %d,
+                                "articleCount": %d
+                            }
+                            """, ticker.toUpperCase(), overallSentiment, positive, negative, neutral, articles.size());
+                    })
+                    .orElse("{\"error\": \"No news available for ticker: " + ticker + "\"}");
+        } catch (Exception e) {
+            log.error("Error analyzing sentiment for {}: {}", ticker, e.getMessage());
+            return "{\"error\": \"Failed to analyze sentiment: " + e.getMessage() + "\"}";
+        }
+    }
+
+    /**
+     * 获取市场上最热门的股票代码。
+     */
+    @Tool("Get top trending tickers in the market")
+    public String getTrendingTickers(@P("Maximum number of tickers to return (default 10)") Integer limit) {
+        int l = (limit != null) ? limit : 10;
+        log.debug("Fetching {} trending tickers", l);
+        // 热门股票代码需要单独的API或对成交量/波动的分析
+        return "{\"error\": \"Trending tickers not yet implemented. This requires a market scanner API.\"}";
+    }
+
+    private String escapeJson(String text) {
+        if (text == null) return "";
+        return text.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
+    }
+}
