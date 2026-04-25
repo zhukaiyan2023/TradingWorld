@@ -18,6 +18,12 @@ public class NewsTools {
 
     private static final Logger log = LoggerFactory.getLogger(NewsTools.class);
 
+    private static final List<String> POSITIVE_WORDS = List.of(
+            "surge", "gain", "rise", "grow", "profit", "beat", "upgrade", "bullish", "optimistic", "soar", "jump", "rally");
+
+    private static final List<String> NEGATIVE_WORDS = List.of(
+            "fall", "drop", "loss", "miss", "downgrade", "bearish", "pessimistic", "plunge", "decline", "cut", "warn", "fear");
+
     private final VendorRouter vendorRouter;
 
     public NewsTools(VendorRouter vendorRouter) {
@@ -138,13 +144,10 @@ public class NewsTools {
                         int negative = 0;
                         int neutral = 0;
 
-                        List<String> positiveWords = List.of("surge", "gain", "rise", "grow", "profit", "beat", "upgrade", "bullish", "optimistic", "soar", "jump", "rally");
-                        List<String> negativeWords = List.of("fall", "drop", "loss", "miss", "downgrade", "bearish", "pessimistic", "plunge", "decline", "cut", "warn", "fear");
-
-                        for ( var article : articles) {
+                        for (var article : articles) {
                             String text = (article.title() + " " + article.content()).toLowerCase();
-                            boolean hasPositive = positiveWords.stream().anyMatch(text::contains);
-                            boolean hasNegative = negativeWords.stream().anyMatch(text::contains);
+                            boolean hasPositive = POSITIVE_WORDS.stream().anyMatch(text::contains);
+                            boolean hasNegative = NEGATIVE_WORDS.stream().anyMatch(text::contains);
 
                             if (hasPositive && !hasNegative) positive++;
                             else if (hasNegative && !hasPositive) negative++;

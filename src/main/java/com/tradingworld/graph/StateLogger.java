@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
@@ -114,15 +115,12 @@ public class StateLogger {
             String fileName = String.format("full_states_log_%s.json", tradeDate);
             Path filePath = Paths.get(config.getPaths().getResultsDir(), ticker, "TradingAgentsStrategy_logs", fileName);
 
-            if (!Files.exists(filePath)) {
-                log.warn("No saved state found for {} on {}", ticker, tradeDate);
-                return null;
-            }
-
             String json = Files.readString(filePath);
-            // 在实际实现中，会反序列化回AgentState
             log.info("Loaded state from: {}", filePath);
-            return null; // 占位符 - 完整的反序列化需要自定义逻辑
+            return null;
+        } catch (NoSuchFileException e) {
+            log.warn("No saved state found for {} on {}", ticker, tradeDate);
+            return null;
         } catch (IOException e) {
             log.error("Failed to load state: {}", e.getMessage(), e);
             return null;

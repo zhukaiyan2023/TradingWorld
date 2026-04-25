@@ -83,8 +83,9 @@ public class BacktestMetrics {
             return 0;
         }
 
+        double mean = dailyReturns.stream().mapToDouble(d -> d).average().orElse(0);
         double variance = dailyReturns.stream()
-            .mapToDouble(d -> Math.pow(d - dailyReturns.stream().mapToDouble(x -> x).average().orElse(0), 2))
+            .mapToDouble(d -> Math.pow(d - mean, 2))
             .average()
             .orElse(0);
 
