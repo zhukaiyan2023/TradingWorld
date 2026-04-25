@@ -68,6 +68,10 @@ public class BacktestMetrics {
         return (Math.pow(totalReturn, 1.0 / years) - 1) * 100;
     }
 
+    public double calculateAnnualizedReturn() {
+        return calculateAnnualReturn();
+    }
+
     /**
      * 计算年化波动率
      *
@@ -192,6 +196,14 @@ public class BacktestMetrics {
      */
     public double calculateVaR(double confidenceLevel) {
         return calculateVaR(confidenceLevel, calculateDailyReturns());
+    }
+
+    public double calculateVaR(double confidenceLevel, List<Double> returns) {
+        if (returns == null || returns.isEmpty()) {
+            return 0;
+        }
+        double varPercentile = (1 - confidenceLevel) * 100;
+        return percentile(returns, varPercentile) * 100;
     }
 
     public double calculateVaR() {

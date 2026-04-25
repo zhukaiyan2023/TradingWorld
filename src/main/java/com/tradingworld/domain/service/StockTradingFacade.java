@@ -1,13 +1,30 @@
 package com.tradingworld.domain.service;
 
-import com.tradingworld.domain.do.analysis.RiskAssessmentDO;
-import com.tradingworld.domain.do.trading.TradeDecisionDO;
-import com.tradingworld.domain.do.analysis.AnalystReportDO;
+import com.tradingworld.domain.dom.analysis.RiskAssessmentDO;
+import com.tradingworld.domain.dom.trading.TradeDecisionDO;
+import com.tradingworld.domain.dom.analysis.AnalystReportDO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 
+/**
+ * 股票交易门面服务。
+ * 整合行情分析、交易决策、风险评估三大服务，
+ * 提供完整的股票交易工作流程。
+ *
+ * <p>完整交易流程：
+ * <ol>
+ *   <li>行情分析 - 调用 QuoteAnalysisService 并行执行四位分析师</li>
+ *   <li>交易决策 - 调用 TradingDecisionService 进行多空辩论并做出决策</li>
+ *   <li>风险评估 - 调用 RiskEvaluationService 评估交易风险</li>
+ * </ol>
+ *
+ * @see QuoteAnalysisService 行情分析服务
+ * @see TradingDecisionService 交易决策服务
+ * @see RiskEvaluationService 风险评估服务
+ * @see TradingResult 交易结果记录
+ */
 @Service
 public class StockTradingFacade {
     private static final Logger log = LoggerFactory.getLogger(StockTradingFacade.class);

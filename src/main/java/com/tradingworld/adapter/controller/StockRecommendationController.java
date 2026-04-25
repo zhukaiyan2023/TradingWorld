@@ -10,6 +10,20 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+/**
+ * 股票推荐控制器。
+ * 提供股票分析和推荐的核心 API。
+ *
+ * <p>主要功能：
+ * <ul>
+ *   <li>股票分析 - 触发完整的 AI 多智能体分析流程</li>
+ *   <li>返回综合交易建议</li>
+ * </ul>
+ *
+ * @see StockTradingFacade 股票交易门面服务
+ * @see RecommendationAssembler 推荐DTO转换器
+ * @see RecommendationDTO 推荐数据传输对象
+ */
 @RestController
 @RequestMapping("/api/v2/stock")
 public class StockRecommendationController {

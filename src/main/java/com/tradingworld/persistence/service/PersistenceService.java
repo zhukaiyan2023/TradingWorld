@@ -51,8 +51,8 @@ public class PersistenceService {
     public void saveTradeRecords(List<TradeRecordEntity> records) {
         for (TradeRecordEntity record : records) {
             record.setCreatedAt(LocalDateTime.now());
+            tradeRecordMapper.insert(record);
         }
-        tradeRecordMapper.insertBatchSomeColumn(records);
     }
 
     /**

@@ -1,6 +1,6 @@
 package com.tradingworld.domain.service;
 
-import com.tradingworld.domain.do.analysis.AnalystReportDO;
+import com.tradingworld.domain.dom.analysis.AnalystReportDO;
 import com.tradingworld.agents.analysts.MarketAnalyst;
 import com.tradingworld.agents.analysts.SentimentAnalyst;
 import com.tradingworld.agents.analysts.NewsAnalyst;
@@ -12,6 +12,24 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.util.concurrent.CompletableFuture;
 
+/**
+ * 行情分析服务。
+ * 协调市场分析、情绪分析、新闻分析、基本面分析四个分析师并行执行，
+ * 最终汇总生成综合分析师报告。
+ *
+ * <p>工作流程：
+ * <ul>
+ *   <li>创建初始状态</li>
+ *   <li>并行执行四位分析师</li>
+ *   <li>汇总分析结果生成报告</li>
+ * </ul>
+ *
+ * @see AnalystReportDO 分析师报告
+ * @see MarketAnalyst 市场分析师
+ * @see SentimentAnalyst 情绪分析师
+ * @see NewsAnalyst 新闻分析师
+ * @see FundamentalsAnalyst 基本面分析师
+ */
 @Service
 public class QuoteAnalysisService {
     private static final Logger log = LoggerFactory.getLogger(QuoteAnalysisService.class);

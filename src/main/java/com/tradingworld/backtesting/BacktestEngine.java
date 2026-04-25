@@ -9,7 +9,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -134,50 +133,21 @@ public class BacktestEngine {
         List<HistoricalData> dataList = new ArrayList<>();
 
         try {
-            // 使用VendorRouter获取数据，curr_date参数确保只返回历史数据
-            String data = vendorRouter.getHistoricalPrices(symbol, startDate.toString(), endDate.toString());
-
-            // 解析数据并过滤（确保防止前瞻偏差）
-            dataList = parseAndFilterData(data, symbol);
+            var result = vendorRouter.getHistorical(symbol, "full");
+            if (result.isPresent()) {
+                for (var candle : result.get()) {
+                    LocalDate date = candle.datetime().toLocalDate();
+                    // 关键：只添加在回测日期范围内的数据，防止前瞻偏差
+                    if (!date.isBefore(startDate) && !date.isAfter(endDate)) {
+                        dataList.add(new HistoricalData(date, candle.close()));
+                    }
+                }
+            }
         } catch (Exception e) {
             log.error("Error loading historical data for {}: {}", symbol, e.getMessage());
         }
 
         return dataList;
-    }
-
-    /**
-     * 解析并过滤数据，确保不包含未来信息
-     */
-    private List<HistoricalData> parseAndFilterData(String data, String symbol) {
-        List<HistoricalData> result = new ArrayList<>();
-
-        if (data == null || data.isEmpty()) {
-            return result;
-        }
-
-        // 简单的CSV解析（假设格式：Date,Open,High,Low,Close,Volume）
-        String[] lines = data.split("\n");
-        for (int i = 1; i < lines.length; i++) { // 跳过标题行
-            String[] parts = lines[i].split(",");
-            if (parts.length >= 5) {
-                try {
-                    LocalDate date = LocalDate.parse(parts[0].trim(), DateTimeFormatter.ISO_DATE);
-
-                    // 关键：只添加end_date之前的数据，防止前瞻偏差
-                    if (date.isAfter(endDate)) {
-                        continue;
-                    }
-
-                    double closePrice = Double.parseDouble(parts[4].trim());
-                    result.add(new HistoricalData(date, closePrice));
-                } catch (Exception e) {
-                    // 跳过无效行
-                }
-            }
-        }
-
-        return result;
     }
 
     /**

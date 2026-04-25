@@ -7,7 +7,6 @@ import com.tradingworld.graph.state.AgentState;
 import com.tradingworld.persistence.entity.AnalysisReportEntity;
 import com.tradingworld.persistence.entity.TradeRecordEntity;
 import com.tradingworld.persistence.service.PersistenceService;
-import com.tradingworld.TradingAgentsApplication;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
@@ -30,13 +29,13 @@ public class TradingCliApp implements CommandLineRunner {
     private static final Logger log = LoggerFactory.getLogger(TradingCliApp.class);
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ISO_DATE;
 
-    private final TradingAgentsApplication tradingApplication;
+    private final StockAnalysisService stockAnalysisService;
     private final PersistenceService persistenceService;
 
     public TradingCliApp(
-            TradingAgentsApplication tradingApplication,
+            StockAnalysisService stockAnalysisService,
             PersistenceService persistenceService) {
-        this.tradingApplication = tradingApplication;
+        this.stockAnalysisService = stockAnalysisService;
         this.persistenceService = persistenceService;
     }
 
@@ -123,7 +122,7 @@ public class TradingCliApp implements CommandLineRunner {
                 System.out.println("  分析股票: " + ticker);
                 System.out.println("═══════════════════════════════════════════════════\n");
 
-                AgentState state = tradingApplication.analyze(ticker, date);
+                AgentState state = stockAnalysisService.analyze(ticker, date);
 
                 // 保存分析报告
                 saveAnalysisReports(ticker, date, state);
@@ -252,11 +251,12 @@ public class TradingCliApp implements CommandLineRunner {
 
             // 解析命令
             String[] parts = line.split("\\s+");
-            String[] args = new String[parts.length - 1];
-            System.arraycopy(parts, 1, args, 0, parts.length - 1);
+            String[] args = new String[parts.length];
+            args[0] = parts[0];
+            System.arraycopy(parts, 1, args, 1, parts.length - 1);
 
             try {
-                run(parts[0], args);
+                run(args);
             } catch (Exception e) {
                 log.error("执行命令失败: {}", e.getMessage());
             }

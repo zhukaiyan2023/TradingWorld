@@ -1,7 +1,7 @@
 package com.tradingworld.domain.service;
 
-import com.tradingworld.domain.do.trading.TradeDecisionDO;
-import com.tradingworld.domain.do.analysis.AnalystReportDO;
+import com.tradingworld.domain.dom.trading.TradeDecisionDO;
+import com.tradingworld.domain.dom.analysis.AnalystReportDO;
 import com.tradingworld.agents.researchers.BullResearcher;
 import com.tradingworld.agents.researchers.BearResearcher;
 import com.tradingworld.agents.trader.Trader;
@@ -12,6 +12,23 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+/**
+ * 交易决策服务。
+ * 协调多头研究员、空头研究员进行投资辩论，交易员综合辩论结果做出交易决策。
+ *
+ * <p>工作流程：
+ * <ul>
+ *   <li>根据分析师报告创建初始状态</li>
+ *   <li>多空双方进行多轮投资辩论</li>
+ *   <li>交易员根据辩论结果做出最终交易决策</li>
+ * </ul>
+ *
+ * @see TradeDecisionDO 交易决策
+ * @see AnalystReportDO 分析师报告
+ * @see BullResearcher 多头研究员
+ * @see BearResearcher 空头研究员
+ * @see Trader 交易员
+ */
 @Service
 public class TradingDecisionService {
     private static final Logger log = LoggerFactory.getLogger(TradingDecisionService.class);

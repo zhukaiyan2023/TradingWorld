@@ -1,15 +1,25 @@
 package com.tradingworld.infra.gateway.external;
 
-import com.tradingworld.domain.do.quote.StockSpotDO;
-import com.tradingworld.domain.do.quote.StockDailyDO;
+import com.tradingworld.domain.dom.quote.StockSpotDO;
+import com.tradingworld.domain.dom.quote.StockDailyDO;
 import com.tradingworld.domain.gateway.QuoteGateway;
 import com.tradingworld.dataflows.AlphaVantageVendor;
 import com.tradingworld.dataflows.DataVendor;
 import org.springframework.stereotype.Component;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
+/**
+ * AlphaVantage 行情网关实现。
+ * 通过 AlphaVantage API 获取美股行情数据。
+ *
+ * <p>注意：此实现仅用于美股数据，A 股数据应使用 {@link com.tradingworld.infra.gateway.mysql.QuoteMySQLGateway}。
+ *
+ * @see QuoteGateway 行情网关接口
+ * @see AlphaVantageVendor AlphaVantage 数据供应商
+ */
 @Component
 public class AlphaVantageGateway implements QuoteGateway {
 
@@ -25,7 +35,7 @@ public class AlphaVantageGateway implements QuoteGateway {
             return null;
         }
         return vendor.getStockQuote(symbol)
-                .map(this::toSpotDO)
+                .map(quote -> toSpotDO(quote, symbol))
                 .orElse(null);
     }
 
@@ -37,7 +47,8 @@ public class AlphaVantageGateway implements QuoteGateway {
         return symbols.stream()
                 .map(vendor::getStockQuote)
                 .filter(Optional::isPresent)
-                .map(opt -> toSpotDO(opt.get()))
+                .map(Optional::get)
+                .map(quote -> toSpotDO(quote, quote.symbol()))
                 .collect(Collectors.toList());
     }
 
@@ -46,9 +57,14 @@ public class AlphaVantageGateway implements QuoteGateway {
         if (!vendor.isAvailable()) {
             return List.of();
         }
-        return vendor.getDailyTimeSeries(symbol, start, end)
+        return vendor.getHistorical(symbol, "full")
+                .orElse(List.of())
                 .stream()
-                .map(this::toDailyDO)
+                .filter(candle -> {
+                    LocalDate date = candle.datetime().toLocalDate();
+                    return !date.isBefore(start) && !date.isAfter(end);
+                })
+                .map(candle -> toDailyDO(candle, symbol))
                 .collect(Collectors.toList());
     }
 
@@ -58,28 +74,25 @@ public class AlphaVantageGateway implements QuoteGateway {
         return list.isEmpty() ? null : list.get(0);
     }
 
-    private StockSpotDO toSpotDO(DataVendor.StockQuote quote) {
+    private StockSpotDO toSpotDO(DataVendor.StockQuote quote, String symbol) {
         return StockSpotDO.builder()
-                .symbol(quote.getSymbol())
-                .name(quote.getSymbol())
-                .price(quote.getPrice())
-                .changePercent(quote.getChangePercent())
-                .open(quote.getOpen())
-                .high(quote.getHigh())
-                .low(quote.getLow())
-                .volume(quote.getVolume())
+                .symbol(symbol)
+                .name(symbol)
+                .price(quote.price())
+                .changePercent(quote.changePercent())
+                .volume((double) quote.volume())
                 .build();
     }
 
-    private StockDailyDO toDailyDO(DataVendor.DailyBar bar) {
+    private StockDailyDO toDailyDO(DataVendor.Candle candle, String symbol) {
         return StockDailyDO.builder()
-                .symbol(bar.getSymbol())
-                .tradeDate(bar.getDate())
-                .open(bar.getOpen())
-                .high(bar.getHigh())
-                .low(bar.getLow())
-                .close(bar.getClose())
-                .volume((double) bar.getVolume())
+                .symbol(symbol)
+                .tradeDate(candle.datetime().toLocalDate())
+                .open(candle.open())
+                .high(candle.high())
+                .low(candle.low())
+                .close(candle.close())
+                .volume((double) candle.volume())
                 .build();
     }
 }

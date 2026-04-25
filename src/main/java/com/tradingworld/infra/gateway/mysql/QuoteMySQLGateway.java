@@ -1,7 +1,7 @@
 package com.tradingworld.infra.gateway.mysql;
 
-import com.tradingworld.domain.do.quote.StockSpotDO;
-import com.tradingworld.domain.do.quote.StockDailyDO;
+import com.tradingworld.domain.dom.quote.StockSpotDO;
+import com.tradingworld.domain.dom.quote.StockDailyDO;
 import com.tradingworld.domain.gateway.QuoteGateway;
 import com.tradingworld.persistence.entity.astock.AstockSpotEntity;
 import com.tradingworld.persistence.entity.astock.AstockDailyEntity;
@@ -12,6 +12,14 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * MySQL 行情网关实现。
+ * 通过 MyBatis-Plus 访问 MySQL 数据库获取 A 股行情数据。
+ *
+ * @see QuoteGateway 行情网关接口
+ * @see AstockSpotEntity A 股实时行情实体
+ * @see AstockDailyEntity A 股日 K 线实体
+ */
 @Component
 public class QuoteMySQLGateway implements QuoteGateway {
 

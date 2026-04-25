@@ -87,6 +87,15 @@ public class AlphaVantageVendor implements DataVendor {
     }
 
     @Override
+    public Optional<List<StockQuote>> getStockQuotes(List<String> symbols) {
+        List<StockQuote> quotes = new ArrayList<>();
+        for (String symbol : symbols) {
+            getStockQuote(symbol).ifPresent(quotes::add);
+        }
+        return quotes.isEmpty() ? Optional.empty() : Optional.of(quotes);
+    }
+
+    @Override
     public Optional<List<Candle>> getHistorical(String symbol, String period) {
         try {
             String url = String.format(
@@ -183,6 +192,24 @@ public class AlphaVantageVendor implements DataVendor {
             log.warn("Failed to get news for {}: {}", symbol, e.getMessage());
             return Optional.empty();
         }
+    }
+
+    @Override
+    public Optional<List<StockQuote>> screenStocks(StockFilter filter) {
+        log.debug("Stock screening not available via Alpha Vantage API");
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<List<TrendingTicker>> getTrendingTickers(int limit) {
+        log.debug("Trending tickers not available via Alpha Vantage API");
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<List<StockQuote>> getMarketMovers(String type, int limit) {
+        log.debug("Market movers not available via Alpha Vantage API");
+        return Optional.empty();
     }
 
     private String fetchUrl(String url) {

@@ -12,24 +12,23 @@ import org.springframework.context.annotation.Configuration;
 /**
  * 交易工具的配置。
  * 工具供AI智能体获取金融数据使用。
- * VendorRouter 通过构造器注入，确保所有工具共享同一个实例。
  */
 @Configuration
 public class ToolsConfig {
 
     @Bean
-    public MarketTools marketTools(VendorRouter vendorRouter) {
-        return new MarketTools(vendorRouter);
+    public MarketTools marketTools() {
+        return new MarketTools();
     }
 
     @Bean
-    public TechnicalTools technicalTools(VendorRouter vendorRouter) {
-        return new TechnicalTools(vendorRouter);
+    public TechnicalTools technicalTools() {
+        return new TechnicalTools();
     }
 
     @Bean
-    public FundamentalTools fundamentalTools(VendorRouter vendorRouter) {
-        return new FundamentalTools(vendorRouter);
+    public FundamentalTools fundamentalTools() {
+        return new FundamentalTools();
     }
 
     @Bean

@@ -75,9 +75,40 @@ public class NewsTools {
     @Tool("Get global macroeconomic news for a topic")
     public String getGlobalNews(@P("Topic to search (e.g., FED, inflation, GDP)") String topic) {
         log.debug("Fetching global news for topic: {}", topic);
-        // Alpha Vantage提供新闻情绪，可以覆盖市场主题
-        // 目前返回一条消息，表明此功能需要特定实现
-        return "{\"error\": \"Global news by topic not yet implemented. Use getNews() for stock-specific news.\"}";
+        try {
+            String[] marketProxies = {"SPY", "QQQ", "DIA"};
+            StringBuilder allNews = new StringBuilder();
+            allNews.append("{\"topic\": \"").append(escapeJson(topic)).append("\", \"news\": [");
+
+            boolean hasNews = false;
+            for (String proxy : marketProxies) {
+                var result = vendorRouter.getNews(proxy);
+                if (result.isPresent() && !result.get().isEmpty()) {
+                    for (var article : result.get()) {
+                        if (hasNews) allNews.append(", ");
+                        allNews.append("{");
+                        allNews.append("\"title\": \"").append(escapeJson(article.title())).append("\", ");
+                        allNews.append("\"content\": \"").append(escapeJson(article.content())).append("\", ");
+                        allNews.append("\"source\": \"").append(escapeJson(article.source())).append("\", ");
+                        allNews.append("\"url\": \"").append(escapeJson(article.url())).append("\", ");
+                        allNews.append("\"publishTime\": \"").append(article.publishTime().toString()).append("\", ");
+                        allNews.append("\"related\": \"").append(proxy).append("\"");
+                        allNews.append("}");
+                        hasNews = true;
+                    }
+                }
+            }
+
+            if (!hasNews) {
+                return "{\"error\": \"No global news available for topic: " + escapeJson(topic) + "\"}";
+            }
+
+            allNews.append("], \"topic\": \"").append(escapeJson(topic)).append("\"}");
+            return allNews.toString();
+        } catch (Exception e) {
+            log.error("Error fetching global news for topic {}: {}", topic, e.getMessage());
+            return "{\"error\": \"Failed to fetch global news: " + e.getMessage() + "\"}";
+        }
     }
 
     /**

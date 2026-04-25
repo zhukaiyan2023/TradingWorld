@@ -1,5 +1,8 @@
 package com.tradingworld.memory;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * 使用BM25存储和检索金融情境的记忆系统。
  * 这是Python FinancialSituationMemory类的Java移植。
