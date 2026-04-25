@@ -11,6 +11,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * 行情分析服务。
@@ -72,7 +74,9 @@ public class QuoteAnalysisService {
                 CompletableFuture.runAsync(() -> sentimentAnalyst.execute(state)),
                 CompletableFuture.runAsync(() -> newsAnalyst.execute(state)),
                 CompletableFuture.runAsync(() -> fundamentalsAnalyst.execute(state))
-            ).join();
+            ).get(30, TimeUnit.SECONDS);
+        } catch (TimeoutException e) {
+            log.warn("Analyst execution timed out after 30 seconds for {}", state.getCompanyOfInterest());
         } catch (Exception e) {
             log.error("Error running analysts", e);
         }

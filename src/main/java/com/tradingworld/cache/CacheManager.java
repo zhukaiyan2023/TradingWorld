@@ -11,6 +11,11 @@ import java.util.Map;
 /**
  * 简单的内存缓存管理器。
  * 使用 ConcurrentHashMap 实现线程安全，支持 TTL 过期。
+ *
+ * <p>使用 computeIfAbsent 模式避免惊群效应（thundering herd problem），
+ * 确保同一 key 的并发加载只执行一次。</p>
+ *
+ * @author TradingWorld
  */
 public class CacheManager {
 
@@ -18,6 +23,7 @@ public class CacheManager {
 
     private final Map<String, CacheEntry> cache = new ConcurrentHashMap<>();
     private final Duration defaultTtl;
+    private final int maxSize;
 
     /**
      * 创建缓存管理器
@@ -25,7 +31,18 @@ public class CacheManager {
      * @param defaultTtl 默认 TTL（存活时间）
      */
     public CacheManager(Duration defaultTtl) {
+        this(defaultTtl, 10000);
+    }
+
+    /**
+     * 创建缓存管理器
+     *
+     * @param defaultTtl 默认 TTL
+     * @param maxSize    最大缓存条目数，超过后淘汰最老条目
+     */
+    public CacheManager(Duration defaultTtl, int maxSize) {
         this.defaultTtl = defaultTtl;
+        this.maxSize = maxSize;
     }
 
     /**
@@ -58,25 +75,38 @@ public class CacheManager {
     }
 
     /**
-     * 获取缓存值，如果不存在则从 loader 加载
+     * 获取缓存值，如果不存在则从 loader 加载。
+     * 使用 computeIfAbsent 避免惊群效应，同一 key 的并发加载只会执行一次。
      *
-     * @param key   缓存键
+     * @param key    缓存键
      * @param loader 值加载器
-     * @param ttl   缓存存活时间
+     * @param ttl    缓存存活时间
      * @return 缓存值
      */
     public <T> T getOrLoad(String key, java.util.function.Supplier<T> loader, Duration ttl) {
-        T value = get(key);
-        if (value != null) {
-            return value;
+        CacheEntry existing = cache.get(key);
+        if (existing != null && !existing.isExpired()) {
+            log.debug("Cache hit for key: {}", key);
+            return (T) existing.value();
         }
 
-        log.debug("Cache miss for key: {}, loading...", key);
-        value = loader.get();
-        if (value != null) {
-            put(key, value, ttl);
+        CacheEntry newEntry = cache.compute(key, (k, entry) -> {
+            if (entry != null && !entry.isExpired()) {
+                return entry;
+            }
+            log.debug("Cache miss for key: {}, loading...", k);
+            T loaded = loader.get();
+            if (loaded != null) {
+                return new CacheEntry(loaded, Instant.now().plus(ttl));
+            }
+            return null;
+        });
+
+        if (newEntry != null) {
+            return (T) newEntry.value();
         }
-        return value;
+
+        return null;
     }
 
     /**
@@ -97,6 +127,11 @@ public class CacheManager {
         if (key == null || value == null) {
             return;
         }
+
+        if (cache.size() >= maxSize && !cache.containsKey(key)) {
+            evictOldest();
+        }
+
         cache.put(key, new CacheEntry(value, Instant.now().plus(ttl)));
         log.debug("Cached value for key: {}, ttl: {}", key, ttl);
     }
@@ -142,6 +177,17 @@ public class CacheManager {
         int removed = before - cache.size();
         if (removed > 0) {
             log.info("Cleaned up {} expired cache entries", removed);
+        }
+    }
+
+    /**
+     * 淘汰最老的缓存条目
+     */
+    private void evictOldest() {
+        var iterator = cache.entrySet().iterator();
+        if (iterator.hasNext()) {
+            iterator.remove();
+            log.debug("Evicted oldest cache entry due to size limit");
         }
     }
 
