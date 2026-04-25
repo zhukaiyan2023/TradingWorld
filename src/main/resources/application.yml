@@ -2,9 +2,9 @@ spring:
   application:
     name: tradingworld
   datasource:
-    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:tradingworld}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
-    username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:root}
+    url: jdbc:mysql://localhost:3306/data_stock?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: trading
+    password: TradingWorld123!
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       maximum-pool-size: 10
@@ -25,9 +25,20 @@ mybatis-plus:
       logic-not-delete-value: 0
 
 trading:
+  quote:
+    cache-enabled: true
+    cache-ttl: 300
+    default-symbol: "000001"
+  trading:
+    max-position-size: 100000
+    risk-threshold: 0.15
+    max-debate-rounds: 3
+  analysis:
+    model: deep-think
+    timeout-seconds: 300
   agents:
     selected-analysts: market,sentiment,news,fundamentals
-    max-debate-rounds: 1
+    max-debate-rounds: 3
     max-risk-discuss-rounds: 1
     max-recur-limit: 100
   llm:
@@ -42,17 +53,6 @@ trading:
   paths:
     results-dir: ${TRADINGWORLD_RESULTS_DIR:~/.tradingworld/logs}
     data-cache-dir: ${TRADINGWORLD_CACHE_DIR:~/.tradingworld/cache}
-  data:
-    yfinance:
-      enabled: true
-    alpha-vantage:
-      enabled: true
-      api-key: ${ALPHA_VANTAGE_API_KEY:}
-      base-url: https://www.alphavantage.co
-    ashare:
-      enabled: true
-      base-url: https://push2.eastmoney.com
-      timeout: 30
 
 langchain4j:
   open-ai:
