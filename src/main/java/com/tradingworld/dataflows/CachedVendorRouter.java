@@ -55,15 +55,6 @@ public class CachedVendorRouter {
     }
 
     /**
-     * 获取历史价格（带缓存）
-     */
-    public String getHistoricalPrices(String symbol, String startDate, String endDate) {
-        // 这个方法返回的是 JSON 字符串，也需要缓存
-        String key = "historical_prices:" + symbol + ":" + startDate + ":" + endDate;
-        return cache.getOrLoad(key, () -> delegate.getHistoricalPrices(symbol, startDate, endDate), HISTORICAL_TTL);
-    }
-
-    /**
      * 获取资产负债表（带缓存）
      */
     public Optional<DataVendor.BalanceSheet> getBalanceSheet(String symbol) {
